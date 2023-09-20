@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Table to ICS Converter</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-gray-100 h-screen flex items-center justify-center">
+
+    <div class="bg-white p-12 rounded-lg shadow-xl w-3/4">
+        <h1 class="text-3xl font-bold mb-6 text-center">Table to ICS Converter</h1>
+        <textarea id="tableData" rows="8" cols="60" placeholder="Paste your tab-separated table data here..."
+            class="w-full p-4 border rounded-md mb-6 text-lg"></textarea>
+        <button onclick="createShareableLink()" class="w-full bg-purple-500 text-white p-6 rounded-md font-bold text-xl hover:bg-purple-600 mb-4">Create Shareable Link</button>
+        <input id="shareableLink" class="w-full p-4 border rounded-md mb-4 text-lg" type="text" readonly style="display:none;">
+        <button onclick="showNames()" class="w-full bg-yellow-500 text-white p-6 rounded-md font-bold text-xl hover:bg-yellow-600 mb-4">Show Names</button>
+        <div id="namesList" class="mb-4"></div>
+        <button onclick="generateICS()" class="w-full bg-blue-500 text-white p-6 rounded-md font-bold text-xl hover:bg-blue-600 mb-4">Generate ICS</button>
+        <a id="downloadLink" class="block text-center mt-2 w-full bg-green-500 text-white p-6 rounded-md font-bold text-xl hover:bg-green-600" style="display:none;">Download ICS</a>
+    </div>
+
+    <script>
+        function createShareableLink() {
+            const tableData = document.getElementById('tableData').value.trim();
+            const encodedData = encodeURIComponent(tableData);
+            const currentURL = window.location.href.split('?')[0]; // Get base URL without any parameters
+            const shareableURL = `${currentURL}?data=${encodedData}`;
+
+            const shareableLinkElement = document.getElementById('shareableLink');
+            shareableLinkElement.value = shareableURL;
+            shareableLinkElement.style.display = 'block';
+            shareableLinkElement.select();
+        }
+
+        function showNames() {
+            const tableData = document.getElementById('tableData').value.trim();
+            const rows = tableData.split('\n');
+
+            let namesSet = new Set();
+
+            // Starting from the 2nd row since 1st row is headers and 2nd row is dates
+            for (let i = 2; i < rows.length; i++) {
+                const columns = rows[i].split('\t');
+                columns.slice(1).forEach(name => namesSet.add(name));
+            }
+
+            let namesListHTML = '';
+            namesSet.forEach(name => {
+                namesListHTML += `<label class="block mb-2"><input type="checkbox" name="name" value="${name}" checked class="mr-2">${name}</label>`;
+            });
+
+            document.getElementById('namesList').innerHTML = namesListHTML;
+        }
+
+        function generateICS() {
+            const tableData = document.getElementById('tableData').value.trim();
+            const rows = tableData.split('\n');
+            const headers = rows[0].split('\t');
+            const currentDate = new Date().toISOString();
+
+            // Get selected names
+            const checkboxes = document.querySelectorAll('input[name="name"]:checked');
+            let selectedNames = [];
+            checkboxes.forEach(checkbox => selectedNames.push(checkbox.value));
+
+            let icsContent = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Table to ICS Converter//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n';
+            const dates = rows[1].split('\t');
+
+            for (let j = 1; j < headers.length; j++) {
+                let releaseOwner = rows[2].split('\t')[j];
+                let matdetSpoc = rows[3].split('\t')[j];
+                let backup = rows[4].split('\t')[j];
+
+                // Check if the event is related to any of the selected names
+                if (selectedNames.includes(releaseOwner) || selectedNames.includes(matdetSpoc) || selectedNames.includes(backup)) {
+                    let endDate = new Date(dates[j].split('.').reverse().join('-'));
+                    endDate.setDate(endDate.getDate() + 1); // Add one day for DTEND
+
+                    icsContent += 'BEGIN:VEVENT\r\n';
+                    icsContent += 'SUMMARY:Release on ' + dates[j] + '\r\n';
+                    icsContent += 'UID:' + currentDate + '-event-' + j + '@table-to-ics.com\r\n';
+                    icsContent += 'DTSTAMP:' + currentDate.replace(/[-:]/g, '').split('.')[0] + 'Z\r\n';
+                    icsContent += 'SEQUENCE:0\r\n';
+                    icsContent += 'STATUS:CONFIRMED\r\n';
+                    icsContent += 'TRANSP:TRANSPARENT\r\n';
+                    icsContent += 'DTSTART;VALUE=DATE:' + dates[j].split('.').reverse().join('') + '\r\n';
+                    icsContent += 'DTEND;VALUE=DATE:' + endDate.toISOString().slice(0,10).replace(/-/g, '') + '\r\n';
+                    icsContent += 'DESCRIPTION:Release Owner: ' + releaseOwner + '\\nMATDET Spoc: ' + matdetSpoc + '\\nBack-up: ' + backup + '\r\n';
+                    icsContent += 'END:VEVENT\r\n';
+                }
+            }
+
+            icsContent += 'END:VCALENDAR';
+
+            const blob = new Blob([icsContent], { type: 'text/calendar' });
+            const url = window.URL.createObjectURL(blob);
+
+            const downloadLink = document.getElementById('downloadLink');
+            downloadLink.href = url;
+            downloadLink.download = 'release_schedule.ics';
+            downloadLink.style.display = 'block';
+        }
+
+        // On page load, check for the 'data' URL parameter and populate the textarea if it exists
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const dataParam = urlParams.get('data');
+            if (dataParam) {
+                const decodedData = decodeURIComponent(dataParam);
+                document.getElementById('tableData').value = decodedData;
+            }
+        }
+    </script>
+</body>
+
+</html>
